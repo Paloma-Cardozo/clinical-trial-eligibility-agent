@@ -59,6 +59,7 @@ pytest tests/test_smoke.py -v
 
 The CTE Agent is a single-process FastAPI application with a strict module boundary between orchestration, data access, and data cleaning:
 
+```
 clinical-trial-eligibility-agent/
 ├── main.py                          # FastAPI app: serves the UI, exposes POST /chat
 ├── requirements.txt                 # Dependencies
@@ -82,6 +83,7 @@ clinical-trial-eligibility-agent/
 └── tests/
     ├── __init__.py
     └── test_smoke.py                # Smoke tests for server and session persistence
+```
 
 **Request flow:** the browser posts `{session_id, message}` to `/chat`. The server is the
 sole authority for session identity: if `session_id` is missing or unrecognized, a new one is minted server-side and returned to the client, which persists it in `sessionStorage` for the lifetime of the tab. Each session's `AgentState` lives in an in-memory dict (`{session_id: AgentState}`) at module scope in `main.py`, and is looked up on every subsequent request.
