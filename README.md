@@ -111,27 +111,24 @@ not something bolted on later — see Design Decisions below.
 | Server-authoritative session IDs: an unrecognized `session_id` from the client is ignored and a new one is minted, rather than trusted and adopted          | Trusting a client-supplied session ID at face value is a session fixation risk — any client could claim or create a session under an ID of its choosing. The server is the only party allowed to mint valid session IDs.                                                                                                                                                                                                                                              |
 | In-memory session store, no database                                                                                                                        | Explicitly out of scope per the assignment (single patient at a time, no persistence requirement), and the session data is an ephemeral search context, not a medical record that needs to survive a restart.                                                                                                                                                                                                                                                         |
 | Single FastAPI process serving both the static frontend and the `/chat` API, instead of a separate frontend dev server                                      | One command (`uvicorn main:app`) is enough to run the whole app locally, which the assignment explicitly asks for. A split frontend/backend setup would add CORS configuration and a second process for no benefit at this scale.                                                                                                                                                                                                                                     |
+| `/chat` endpoint defined as `async def` from Phase 1 onward, even though Phase 1 code does not `await` anything yet                                          | `TrialSearcher` (Phase 1) is async to enable parallel `get_trial_details()` calls in Phase 3 via `asyncio.gather()`. Converting `/chat` to async now, rather than deferring to Phase 3, avoids having to re-touch `main.py` later and keeps the async/sync boundary consistent throughout. The cost is surface-level async with no concurrency until Phase 3, which is acceptable.                                                                                       |
+| Manual retry logic with exponential backoff (no external retry libraries like `tenacity`) and explicit error propagation via `ClinicalTrialsAPIError`      | Keeps dependencies minimal and makes retry behavior explicit and testable. Distinguishing "got results but list is empty" from "API call failed" is critical: the agent must know whether to ask clarifying questions or surface a connection error to the patient. Manual backoff is simple enough (1s, 2s, 4s) that the overhead of a library is not justified.                                                                                                          |
 
 ## What's Next with More Time
 
-- **Phase 1 — ClinicalTrials.gov integration:** implement `TrialSearcher` against the
-  `/studies` endpoint with a constrained `fields` list, `status=RECRUITING` filtering, and
-  pagination handling.
 - **Phase 2 — Data cleaning:** parse the free-text `eligibilityCriteria` blob into structured
   `inclusion_criteria` / `exclusion_criteria` lists, with a regex-based first pass and an
   LLM-assisted fallback for studies that don't follow the common header format; normalize
   age fields and dates.
 - **Phase 3 — Agent loop:** implement the actual tool-use loop in `orchestrator.py` —
   clarification requests, search, drill-down into promising candidates, explicit stopping
-  condition.
+  condition. Integrate `TrialSearcher` as a tool the agent can invoke.
 - **Phase 4 — Hard/soft constraint filtering:** wire `EligibilityFilter` and
   `EligibilityReasoner` into the loop, producing the final labeled, ranked shortlist.
-- **Concurrency:** the in-memory session dict isn't safe against two simultaneous requests
-  for the same `session_id` (a race condition I'm aware of but chose not to solve, given the
-  single-patient, single-session scope of this assignment). With more time, or at real
-  scale, I'd move session state to Redis and add per-session locking.
-- **Resilience:** no retry/backoff logic yet around ClinicalTrials.gov calls; would add
-  timeout handling and a small retry policy before treating this as production-ready.
-- **Testing:** current tests are smoke tests only; would add unit tests per module
-  (`EligibilityFilter` against known structured-field edge cases, criteria parsing against a
-  sample of real `eligibilityCriteria` text formats) once Phases 1-4 land.
+- **Concurrency improvements:** the in-memory session dict isn't safe against two simultaneous
+  requests for the same `session_id` (a race condition intentionally not solved given the
+  single-patient, single-session scope of this assignment). With more time or at real scale,
+  move session state to Redis and add per-session locking.
+- **Testing expansion:** beyond integration tests against the real API, add unit tests per
+  module (`EligibilityFilter` against known structured-field edge cases, criteria parsing
+  against a sample of real `eligibilityCriteria` text formats) once Phases 2-4 land.

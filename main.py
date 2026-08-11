@@ -74,7 +74,7 @@ def serve_ui():
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
+async def chat(request: ChatRequest) -> ChatResponse:
     """
     Main chat endpoint. Receives patient message and returns agent response.
 
