@@ -10,9 +10,8 @@ Session management:
 - State persists across multiple POST requests from the same session
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 import uuid
@@ -79,17 +78,10 @@ def chat(request: ChatRequest) -> ChatResponse:
     a session_id that doesn't exist, we ignore it and generate a new one.
     This prevents session fixation attacks.
 
-    Flow (Phase 0 - placeholder):
+    Flow:
     1. Validate session_id (server-side check)
     2. Retrieve or create AgentState for this session
-    3. Return placeholder response
-
-    Future flow (Phase 2+):
-    1. Validate session_id (server-side check)
-    2. Retrieve AgentState for this session
-    3. Call Agent.process_message(state, request.message)
-    4. Update sessions[session_id] with returned state
-    5. Return agent's text response
+    3. Return agent response (Phase 0: placeholder; Phase 2+: via Agent.process_message)
     """
 
     # Validate session_id: if not provided OR doesn't exist in our sessions dict,
@@ -105,16 +97,14 @@ def chat(request: ChatRequest) -> ChatResponse:
 
     state = sessions[session_id]
 
-    # PHASE 0: Placeholder response (just echo the message)
-    # In Phase 2, this will call: state, response = agent.process_message(state, request.message)
-    placeholder_response = f"[Placeholder] You said: {request.message}"
+    # TODO Phase 2: Replace with agent.process_message(state, request.message)
+    response = f"[Placeholder] You said: {request.message}"
 
-    # Update sessions dictionary (for future use)
     sessions[session_id] = state
 
     return ChatResponse(
         session_id=session_id,
-        response=placeholder_response
+        response=response
     )
 
 
