@@ -6,7 +6,7 @@ It serves the HTML/JS frontend and exposes the /chat endpoint for agent interact
 
 Session management:
 - Sessions are stored in memory as {session_id: AgentState}
-- Session IDs are UUIDs generated client-side or on first request
+- Session IDs are UUIDs generated server-side. Server is the sole authority for valid session IDs.
 - State persists across multiple POST requests from the same session
 """
 
@@ -29,6 +29,7 @@ app = FastAPI(title="Clinical Trial Eligibility Agent")
 # Request/Response Models
 # ============================================================================
 
+
 class ChatRequest(BaseModel):
     """
     Client request to /chat endpoint.
@@ -37,6 +38,7 @@ class ChatRequest(BaseModel):
     - session_id: Optional unique session identifier. If None, a new session is created.
     - message: Patient's message (free text).
     """
+
     session_id: Optional[str] = None
     message: str
 
@@ -49,6 +51,7 @@ class ChatResponse(BaseModel):
     - session_id: Session identifier (new or existing)
     - response: Text response from the agent (placeholder for now)
     """
+
     session_id: str
     response: str
 
@@ -56,6 +59,7 @@ class ChatResponse(BaseModel):
 # ============================================================================
 # Routes
 # ============================================================================
+
 
 @app.get("/", response_class=FileResponse)
 def serve_ui():
@@ -81,7 +85,8 @@ def chat(request: ChatRequest) -> ChatResponse:
     Flow:
     1. Validate session_id (server-side check)
     2. Retrieve or create AgentState for this session
-    3. Return agent response (Phase 0: placeholder; Phase 2+: via Agent.process_message)
+    3. Return agent response (currently a placeholder; will call
+       Agent.process_message() once the orchestrator loop is implemented)
     """
 
     # Validate session_id: if not provided OR doesn't exist in our sessions dict,
@@ -97,17 +102,17 @@ def chat(request: ChatRequest) -> ChatResponse:
 
     state = sessions[session_id]
 
-    # TODO Phase 2: Replace with agent.process_message(state, request.message)
+    # TODO: Replace with agent.process_message(state, request.message)
+    # once the orchestrator loop is implemented (see src/agent/orchestrator.py)
+
     response = f"[Placeholder] You said: {request.message}"
 
     sessions[session_id] = state
 
-    return ChatResponse(
-        session_id=session_id,
-        response=response
-    )
+    return ChatResponse(session_id=session_id, response=response)
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8000)
