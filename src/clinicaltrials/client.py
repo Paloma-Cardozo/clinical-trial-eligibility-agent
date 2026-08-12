@@ -16,7 +16,6 @@ Design decisions:
 import httpx
 import asyncio
 from typing import Optional, List
-from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -100,8 +99,6 @@ class TrialSummary(BaseModel):
     maximum_age: Optional[str] = None
     sex: Optional[str] = None
     healthy_volunteers: Optional[bool] = None
-
-    model_config = ConfigDict(populate_by_name=True)
 
 
 class TrialDetail(TrialSummary):
@@ -234,12 +231,22 @@ class TrialSearcher:
                 return TrialSearchResult(results=results, next_page_token=next_token)
 
             except httpx.HTTPError as e:
-                if attempt < RETRY_ATTEMPTS - 1:
+                # Distinguish retryable errors from permanent failures
+                is_retryable = isinstance(
+                    e,
+                    (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError),
+                ) or (
+                    isinstance(e, httpx.HTTPStatusError)
+                    and e.response.status_code >= 500
+                )
+
+                if is_retryable and attempt < RETRY_ATTEMPTS - 1:
                     wait_time = RETRY_DELAYS[attempt]
                     await asyncio.sleep(wait_time)
                 else:
+                    # Permanent error (4xx) or final retry exhausted
                     raise ClinicalTrialsAPIError(
-                        f"Failed to search trials after {RETRY_ATTEMPTS} attempts: {e}"
+                        f"Failed to search trials after {attempt + 1} attempt(s): {e}"
                     ) from e
 
     async def get_trial_details(self, nct_id: str) -> TrialDetail:
@@ -321,10 +328,20 @@ class TrialSearcher:
                 return trial
 
             except httpx.HTTPError as e:
-                if attempt < RETRY_ATTEMPTS - 1:
+                # Distinguish retryable errors from permanent failures
+                is_retryable = isinstance(
+                    e,
+                    (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError),
+                ) or (
+                    isinstance(e, httpx.HTTPStatusError)
+                    and e.response.status_code >= 500
+                )
+
+                if is_retryable and attempt < RETRY_ATTEMPTS - 1:
                     wait_time = RETRY_DELAYS[attempt]
                     await asyncio.sleep(wait_time)
                 else:
+                    # Permanent error (4xx) or final retry exhausted
                     raise ClinicalTrialsAPIError(
-                        f"Failed to fetch trial {nct_id} after {RETRY_ATTEMPTS} attempts: {e}"
+                        f"Failed to fetch trial {nct_id} after {attempt + 1} attempt(s): {e}"
                     ) from e
