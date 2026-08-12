@@ -8,8 +8,13 @@ Run with: pytest tests/test_clinicaltrials_api.py -v
 """
 
 import pytest
-import asyncio
-from src.clinicaltrials.client import TrialSearcher, TrialSearchResult, ClinicalTrialsAPIError
+from src.clinicaltrials.client import (
+    TrialSearcher,
+    TrialSearchResult,
+    ClinicalTrialsAPIError,
+    TrialNotFoundError,
+    ClinicalTrialsConnectionError,
+)
 
 
 @pytest.mark.asyncio
@@ -109,12 +114,8 @@ async def test_get_trial_details():
 
 @pytest.mark.asyncio
 async def test_get_trial_details_invalid_nct_id():
-    """Verify get_trial_details() raises ClinicalTrialsAPIError for invalid NCT ID."""
+    """Verify get_trial_details() raises TrialNotFoundError for invalid NCT ID (404)."""
     searcher = TrialSearcher()
 
-    with pytest.raises(ClinicalTrialsAPIError):
+    with pytest.raises(TrialNotFoundError):
         await searcher.get_trial_details("NCT99999999")
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

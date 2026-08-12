@@ -24,7 +24,17 @@ from pydantic import BaseModel, Field, ConfigDict
 # ============================================================================
 
 class ClinicalTrialsAPIError(Exception):
-    """Raised when ClinicalTrials.gov API calls fail after all retries."""
+    """Base exception: Raised when ClinicalTrials.gov API calls fail."""
+    pass
+
+
+class TrialNotFoundError(ClinicalTrialsAPIError):
+    """Raised when a trial is not found (404 or empty search results)."""
+    pass
+
+
+class ClinicalTrialsConnectionError(ClinicalTrialsAPIError):
+    """Raised when there are network/connection issues (timeout, SSL, DNS, etc)."""
     pass
 
 
@@ -133,10 +143,6 @@ class TrialSearcher:
     parallelization in Phase 3.
     """
 
-    def __init__(self):
-        """Initialize the client (no state to maintain across calls)."""
-        pass
-
     async def search(
         self,
         condition: str,
@@ -232,10 +238,11 @@ class TrialSearcher:
 
             except httpx.HTTPError as e:
                 # Distinguish retryable errors from permanent failures
-                is_retryable = isinstance(
+                is_connection_error = isinstance(
                     e,
                     (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError),
-                ) or (
+                )
+                is_retryable = is_connection_error or (
                     isinstance(e, httpx.HTTPStatusError)
                     and e.response.status_code >= 500
                 )
@@ -244,10 +251,16 @@ class TrialSearcher:
                     wait_time = RETRY_DELAYS[attempt]
                     await asyncio.sleep(wait_time)
                 else:
-                    # Permanent error (4xx) or final retry exhausted
-                    raise ClinicalTrialsAPIError(
-                        f"Failed to search trials after {attempt + 1} attempt(s): {e}"
-                    ) from e
+                    # Permanent error: distinguish connection vs not found
+                    if is_connection_error:
+                        raise ClinicalTrialsConnectionError(
+                            f"Failed to search trials after {attempt + 1} attempt(s): {e}"
+                        ) from e
+                    else:
+                        # 4xx status or final retry exhausted
+                        raise TrialNotFoundError(
+                            f"Failed to search trials after {attempt + 1} attempt(s): {e}"
+                        ) from e
 
     async def get_trial_details(self, nct_id: str) -> TrialDetail:
         """
@@ -329,10 +342,11 @@ class TrialSearcher:
 
             except httpx.HTTPError as e:
                 # Distinguish retryable errors from permanent failures
-                is_retryable = isinstance(
+                is_connection_error = isinstance(
                     e,
                     (httpx.TimeoutException, httpx.ConnectError, httpx.NetworkError),
-                ) or (
+                )
+                is_retryable = is_connection_error or (
                     isinstance(e, httpx.HTTPStatusError)
                     and e.response.status_code >= 500
                 )
@@ -341,7 +355,13 @@ class TrialSearcher:
                     wait_time = RETRY_DELAYS[attempt]
                     await asyncio.sleep(wait_time)
                 else:
-                    # Permanent error (4xx) or final retry exhausted
-                    raise ClinicalTrialsAPIError(
-                        f"Failed to fetch trial {nct_id} after {attempt + 1} attempt(s): {e}"
-                    ) from e
+                    # Permanent error: distinguish connection vs not found
+                    if is_connection_error:
+                        raise ClinicalTrialsConnectionError(
+                            f"Failed to fetch trial {nct_id} after {attempt + 1} attempt(s): {e}"
+                        ) from e
+                    else:
+                        # 4xx status (e.g., 404) or final retry exhausted
+                        raise TrialNotFoundError(
+                            f"Failed to fetch trial {nct_id} after {attempt + 1} attempt(s): {e}"
+                        ) from e
