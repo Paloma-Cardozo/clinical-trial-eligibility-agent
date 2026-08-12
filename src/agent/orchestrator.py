@@ -1,16 +1,16 @@
 """
 Agent Orchestrator: Main agentic loop.
 
-Responsibility (to be implemented in Phase 2):
+Responsibility:
 - Accept a user message and current AgentState
-- Call Claude with the state as context and the new message
-- Parse Claude's response to extract tool_use calls (if any)
+- Call Gemini with the state as context and the new message
+- Parse Gemini's response to extract function calls (if any)
 - Execute tools (TrialSearcher, EligibilityFilter, EligibilityReasoner)
 - Update AgentState with results and conversation history
 - Decide whether to continue the loop or return a final answer
 
 This is where the "agent" becomes intelligent: instead of a fixed pipeline,
-Claude decides what to do next (ask clarifying questions, search, filter, reason, or stop).
+Gemini decides what to do next (ask clarifying questions, search, filter, reason, or stop).
 """
 
 from src.agent.state import AgentState
@@ -37,14 +37,14 @@ class Agent:
         Returns:
             (updated_state, agent_response): Updated state and text response to send to patient
 
-        Implementation details (Phase 2):
+        Implementation details:
         1. Append user_message to conversation_history
         2. Build prompt with patient context + conversation history
-        3. Call Claude with tool definitions (search, fetch detail, ask question)
-        4. Parse response for tool_use blocks
+        3. Call Gemini with function definitions (search trials, fetch trial detail) — if Gemini responds with plain text instead of a function call, that IS the clarifying question, not a separate tool
+        4. Parse response for function_call blocks
         5. Execute each tool, collect results
-        6. Feed results back to Claude for synthesis (if needed)
+        6. Feed results back to Gemini for synthesis (if needed)
         7. Extract final text response
         8. Update state and return
         """
-        raise NotImplementedError("Agent loop implemented in Phase 2")
+        raise NotImplementedError("process_message not yet implemented")

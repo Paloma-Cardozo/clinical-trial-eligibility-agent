@@ -49,7 +49,3 @@ def test_chat_persists_session_id():
         "message": "Second message"
     })
     assert response2.json()["session_id"] == session_id
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

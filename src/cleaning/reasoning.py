@@ -1,9 +1,9 @@
 """
 EligibilityReasoner: LLM-based reasoning over soft constraints.
 
-Responsibility (to be implemented in Phase 4):
-- After hard constraints have filtered obvious non-matches, use Claude
-  to reason over the free-text eligibility criteria blob
+Responsibility:
+- Use Gemini to reason over free-text eligibility criteria (soft constraints)
+- Runs after hard constraints have filtered obvious non-matches
 - Soft constraints include:
   - Disease stage (e.g., "stage 2 breast cancer")
   - Prior treatments (e.g., "chemo and tamoxifen")
@@ -20,7 +20,7 @@ from typing import Dict, Any, List
 
 class EligibilityReasoner:
     """
-    Uses Claude to reason over soft eligibility constraints (free-text criteria).
+    Uses Gemini to reason over soft eligibility constraints (free-text criteria).
 
     Methods (to be implemented):
     - reason_soft_constraints(patient_profile: Dict, trial: Dict) -> Dict
@@ -43,13 +43,13 @@ class EligibilityReasoner:
                 "rationale": "one-line plain-language explanation"
             }
 
-        Implementation details (Phase 4):
+        Implementation details:
         1. Extract free-text eligibility criteria from trial
-        2. Build a prompt for Claude:
+        2. Build a prompt for Gemini:
            - Patient profile (disease, stage, prior treatments)
            - Trial's eligibility criteria
            - Question: "Is this patient likely to qualify? Be honest about uncertainty."
-        3. Parse Claude's response to extract confidence level and rationale
+        3. Parse Gemini's response to extract confidence level and rationale
         4. Return structured result
         """
-        raise NotImplementedError("Soft constraint reasoning implemented in Phase 4")
+        raise NotImplementedError("reason_soft_constraints not yet implemented")
