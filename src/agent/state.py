@@ -10,7 +10,7 @@ This dataclass will hold:
 Implementation details deferred to Phase 3 (eligibility reasoning logic).
 """
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, UTC
 
@@ -27,5 +27,3 @@ class AgentState(BaseModel):
     """
     session_id: str = Field(..., description="Unique session identifier")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-    model_config = ConfigDict()
