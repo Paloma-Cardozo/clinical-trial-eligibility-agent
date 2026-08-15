@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.12 or higher
 - pip (Python package manager)
 
 ### Setup and Run
@@ -82,7 +82,11 @@ clinical-trial-eligibility-agent/
 │       └── index.html               # Vanilla HTML/JS chat frontend
 └── tests/
     ├── __init__.py
-    └── test_smoke.py                # Smoke tests for server and session persistence
+    ├── test_smoke.py                # Smoke tests for server and session persistence
+    ├── test_orchestrator.py         # Unit tests for Agent orchestrator
+    ├── test_cleaning.py             # Unit tests for data cleaning and normalization
+    ├── test_clinicaltrials_api.py   # Integration tests for ClinicalTrials.gov API
+    └── conftest.py                  # Pytest configuration and fixtures
 ```
 
 **Request flow:** the browser posts `{session_id, message}` to `/chat`. The server is the
@@ -118,9 +122,6 @@ not something bolted on later — see Design Decisions below.
 
 ## What's Next with More Time
 
-- **Phase 3 — Agent loop:** implement the actual tool-use loop in `orchestrator.py` —
-  clarification requests, search, drill-down into promising candidates, explicit stopping
-  condition. Integrate `TrialSearcher` as a tool the agent can invoke.
 - **Phase 4 — Hard/soft constraint filtering:** wire `EligibilityFilter` and
   `EligibilityReasoner` into the loop, producing the final labeled, ranked shortlist.
 - **Concurrency improvements:** the in-memory session dict isn't safe against two simultaneous
@@ -128,4 +129,4 @@ not something bolted on later — see Design Decisions below.
   single-patient, single-session scope of this assignment). With more time or at real scale,
   move session state to Redis and add per-session locking.
 - **Testing expansion:** beyond integration tests against the real API, add unit tests per
-  module (`EligibilityFilter` against known structured-field edge cases, orchestrator loop behavior) once Phases 3-4 land.
+  module (`EligibilityFilter` against known structured-field edge cases) once Phase 4 lands.
