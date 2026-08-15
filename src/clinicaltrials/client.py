@@ -2,14 +2,14 @@
 TrialSearcher: Async client for ClinicalTrials.gov API v2.
 
 This module wraps the public ClinicalTrials.gov /studies endpoint.
-It is intentionally async to support parallel detail-fetching in Phase 3.
+Intentionally async to support parallel detail-fetching.
 
 Design decisions:
 - Manual retry logic with exponential backoff (no external retry libraries)
 - Pydantic models for response validation against real API data
 - Pagination is exposed, not hidden: caller controls whether to fetch next page
 - Fields requested from the API are hardcoded (not parameterizable) to prevent
-  the LLM (Phase 3) from requesting arbitrary fields
+  arbitrary field requests from orchestrator
 - Search uses simple API parameters (query.cond, query.locn), filters by status in code
 """
 
@@ -17,6 +17,7 @@ import httpx
 import asyncio
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
+from src.config import CLINICALTRIALS_TIMEOUT
 
 
 # ============================================================================
@@ -45,7 +46,7 @@ class ClinicalTrialsConnectionError(ClinicalTrialsAPIError):
 BASE_URL = "https://clinicaltrials.gov/api/v2/studies"
 
 # Fields to request from API v2. Using "Piece Names" (simple field names, not nested paths).
-# These are hardcoded to prevent the LLM (Phase 3) from requesting arbitrary fields.
+# These are hardcoded to prevent arbitrary field requests from the orchestrator.
 # Reference: ClinicalTrials.gov API v2 Study Data Structure documentation.
 
 # Fields for search() — minimal set for listing and quick filtering
@@ -80,7 +81,6 @@ DETAIL_FIELDS = SEARCH_FIELDS + [
 # Retry configuration
 RETRY_ATTEMPTS = 3
 RETRY_DELAYS = [1, 2, 4]  # seconds: 1s, 2s, 4s
-REQUEST_TIMEOUT = 10  # seconds
 
 
 # ============================================================================
@@ -139,8 +139,7 @@ class TrialSearcher:
     Async client for ClinicalTrials.gov API v2.
 
     Supports searching trials by condition/location and fetching detailed
-    information for specific trials. All methods are async to enable
-    parallelization in Phase 3.
+    information for specific trials. All methods are async to enable parallelization.
     """
 
     async def search(
@@ -191,7 +190,7 @@ class TrialSearcher:
         # Retry logic
         for attempt in range(RETRY_ATTEMPTS):
             try:
-                async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                async with httpx.AsyncClient(timeout=CLINICALTRIALS_TIMEOUT) as client:
                     response = await client.get(BASE_URL, params=params)
                     response.raise_for_status()
                     data = response.json()
@@ -286,7 +285,7 @@ class TrialSearcher:
 
         for attempt in range(RETRY_ATTEMPTS):
             try:
-                async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                async with httpx.AsyncClient(timeout=CLINICALTRIALS_TIMEOUT) as client:
                     response = await client.get(url, params=params)
                     response.raise_for_status()
                     data = response.json()
