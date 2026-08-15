@@ -14,21 +14,21 @@ This is a critical optimization step: filter out obvious non-matches BEFORE
 calling the LLM on soft constraints, to save API calls.
 """
 
-from typing import List
+from typing import List, Union
+from src.clinicaltrials.client import TrialSummary
 from src.cleaning.models import CleanedTrial
+from src.cleaning.normalization import parse_age
 
 
 class EligibilityFilter:
     """
     Applies hard eligibility constraints (deterministic checks).
 
-    Methods (to be implemented):
-    - filter_by_hard_constraints(patient_age: int, patient_sex: str, candidate_trials: List[CleanedTrial]) -> List[str]
-      Returns list of trial NCT IDs that pass hard constraint checks.
+    Accepts both TrialSummary (from search) and CleanedTrial (from detail fetch).
     """
 
     def filter_by_hard_constraints(
-        self, patient_age: int, patient_sex: str, candidate_trials: List[CleanedTrial]
+        self, patient_age: int, patient_sex: str, candidate_trials: List[Union[TrialSummary, CleanedTrial]]
     ) -> List[str]:
         """
         Filter candidate trials based on age and sex constraints.
@@ -36,21 +36,42 @@ class EligibilityFilter:
         Args:
             patient_age: Patient's age in years (integer)
             patient_sex: Patient's sex ("M", "F", or "All")
-            candidate_trials: List of CleanedTrial objects (already normalized by clean_trial())
+            candidate_trials: List of TrialSummary or CleanedTrial objects
 
         Returns:
             List of NCT IDs that pass age and sex checks
-
-        Implementation details:
-        1. For each trial, read minimum_age_years and maximum_age_years (already parsed integers)
-        2. Check if patient_age falls within [minimum_age_years, maximum_age_years]
-           (handling None values as "no restriction")
-        3. Read sex field; check if patient_sex matches trial's gender restriction
-        4. Optionally check healthyVolunteers flag if patient disease status affects eligibility
-        5. Append nct_id to result list if all checks pass
-        6. Return list of passing NCT IDs
-
-        Note: All fields are already normalized (ages as integers, dates as date objects, etc.)
-        by the clean_trial() function in src/cleaning/__init__.py. No parsing needed here.
         """
-        raise NotImplementedError("filter_by_hard_constraints not yet implemented")
+        passing_nct_ids = []
+
+        for trial in candidate_trials:
+            # Check age constraints
+            age_passes = True
+
+            # Handle both TrialSummary (string ages like "18 Years") and CleanedTrial (integer ages)
+            # Use 'is not None' to handle edge case where minimum_age_years=0 (peds trials from birth)
+            min_age = getattr(trial, 'minimum_age_years', None) if getattr(trial, 'minimum_age_years', None) is not None else parse_age(getattr(trial, 'minimum_age', None))
+            max_age = getattr(trial, 'maximum_age_years', None) if getattr(trial, 'maximum_age_years', None) is not None else parse_age(getattr(trial, 'maximum_age', None))
+
+            if min_age is not None:
+                age_passes = age_passes and (patient_age >= min_age)
+            if max_age is not None:
+                age_passes = age_passes and (patient_age <= max_age)
+
+            if not age_passes:
+                continue
+
+            # Check sex constraints
+            sex_passes = True
+            if trial.sex and trial.sex.upper() != "ALL":
+                # trial.sex is e.g. "M", "F", or "ALL"
+                patient_sex_upper = patient_sex.upper() if patient_sex else "ALL"
+                sex_passes = (patient_sex_upper == trial.sex.upper() or trial.sex.upper() == "ALL")
+
+            if not sex_passes:
+                continue
+
+            # Both age and sex pass
+            passing_nct_ids.append(trial.nct_id)
+
+        return passing_nct_ids
+

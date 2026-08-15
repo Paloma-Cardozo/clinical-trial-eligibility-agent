@@ -1,21 +1,23 @@
+from typing import Union
 from .eligibility import EligibilityFilter
 from .reasoning import EligibilityReasoner
 from .models import CleanedTrial
 from .normalization import parse_age, parse_date
 from .eligibility_parser import parse_eligibility_criteria
-from src.clinicaltrials.client import TrialDetail
+from src.clinicaltrials.client import TrialSummary, TrialDetail
 
 
-def clean_trial(trial: TrialDetail) -> CleanedTrial:
+def clean_trial(trial: Union[TrialSummary, TrialDetail]) -> CleanedTrial:
     """
     Orchestrate cleaning of a trial by applying all normalization functions.
 
-    Converts a raw TrialDetail from the API into a CleanedTrial with normalized
-    age, date, and eligibility criteria fields.
+    Converts a TrialSummary or TrialDetail from the API into a CleanedTrial with
+    normalized age, date, and eligibility criteria fields. Works with both search
+    results (TrialSummary, which lack start/completion dates) and detail fetches
+    (TrialDetail, which include them).
 
     Args:
-        trial: TrialDetail object from API detail calls (search results use TrialSummary,
-               which is a parent class of TrialDetail, so both are compatible)
+        trial: TrialSummary or TrialDetail object from API
 
     Returns:
         CleanedTrial with parsed and structured fields
@@ -29,9 +31,9 @@ def clean_trial(trial: TrialDetail) -> CleanedTrial:
     minimum_age_years = parse_age(trial.minimum_age)
     maximum_age_years = parse_age(trial.maximum_age)
 
-    # Parse date strings to date objects
-    start_date_parsed = parse_date(trial.start_date)
-    completion_date_parsed = parse_date(trial.completion_date)
+    # Parse date strings to date objects (use getattr to handle TrialSummary which lacks these fields)
+    start_date_parsed = parse_date(getattr(trial, "start_date", None))
+    completion_date_parsed = parse_date(getattr(trial, "completion_date", None))
 
     # Create CleanedTrial with all normalized fields
     return CleanedTrial(

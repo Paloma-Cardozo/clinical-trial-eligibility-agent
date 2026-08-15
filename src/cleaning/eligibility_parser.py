@@ -13,8 +13,12 @@ handling edge cases that don't follow the standard format.
 import re
 import os
 import json
+import logging
 from typing import Tuple, List, Optional
 import httpx
+from src.config import load_api_keys, GEMINI_TIMEOUT
+
+logger = logging.getLogger(__name__)
 
 
 def parse_eligibility_criteria(text: Optional[str]) -> Tuple[List[str], List[str]]:
@@ -105,12 +109,15 @@ def _parse_with_llm(text: str) -> Tuple[List[str], List[str]]:
     Parse eligibility criteria using Google Gemini API REST (fallback for non-standard format).
 
     Makes a single, simple LLM call to structure the criteria text.
-    This is NOT the agent loop (Phase 3) — just a focused tool call.
+    Standalone utility, not part of the agent loop.
+    Uses unified load_api_keys() to be consistent with orchestrator and reasoning modules.
     """
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
+    api_keys = load_api_keys()
+    if not api_keys:
         # If no API key, return empty
         return [], []
+
+    api_key = api_keys[0]  # Use first available key
 
     prompt = f"""Extract inclusion and exclusion criteria from this trial eligibility text.
 Return a simple JSON object with "inclusion" and "exclusion" keys, each containing a list of criteria.
@@ -141,7 +148,7 @@ Return ONLY valid JSON, no markdown or extra text."""
             ]
         }
 
-        response = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+        response = httpx.post(url, headers=headers, json=payload, timeout=GEMINI_TIMEOUT)
         response.raise_for_status()
 
         data = response.json()
@@ -161,6 +168,6 @@ Return ONLY valid JSON, no markdown or extra text."""
 
         return inclusion, exclusion
 
-    except Exception:
-        # If LLM call fails, return empty lists
+    except (httpx.HTTPError, json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+        logger.debug(f"LLM fallback failed, returning empty lists: {type(e).__name__}")
         return [], []
