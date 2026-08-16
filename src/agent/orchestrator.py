@@ -613,6 +613,13 @@ class Agent:
                     if iteration == 1:
                         create_kwargs["system_instruction"] = SYSTEM_PROMPT
 
+                    # Validate conversation_history before sending to Gemini
+                    if not self._validate_conversation_history(call_input):
+                        logger.error("Conversation history validation failed - possible corruption detected")
+                        logger.info("Terminal error (corrupted history). Synthesizing partial results.")
+                        partial_response = await self._synthesize_partial_results(state, evaluated_candidates)
+                        return (state, partial_response)
+
                     # Call API with timeout to prevent indefinite hangs
                     loop = asyncio.get_event_loop()
                     interaction = await asyncio.wait_for(
@@ -816,9 +823,9 @@ class Agent:
                 }
 
                 # Truncate while preserving semantic integrity
-                # Find last complete semantic block (tool use block ends with model_output)
-                # and keep full blocks without breaking function_call/function_result pairs
-                history_tail = conversation_history[-19:]  # Start with last 19
+                # Reduced from 19 to 14 to prevent conversation_history corruption under stress
+                # Total: 1 patient_summary + 14 tail = 15 items max (conservative threshold)
+                history_tail = conversation_history[-14:]  # Start with last 14
 
                 # Verify no orphaned function_call/function_result pairs at edges
                 # Remove any function_call not followed by function_result
@@ -1311,6 +1318,61 @@ class Agent:
         logger.info(f"Patient profile updated: age={state.patient_profile.age}, sex={state.patient_profile.sex}, condition={state.patient_profile.condition}")
 
         return json.dumps({"status": "OK", "message": "Patient profile updated successfully"})
+
+    def _validate_conversation_history(self, history: List[Dict[str, Any]]) -> bool:
+        """
+        Validate conversation_history structure before sending to Gemini.
+
+        Checks for:
+        - Valid item types (user_input, function_call, function_result, etc.)
+        - Complete function_call/function_result pairs
+        - Non-empty content fields
+
+        Returns True if valid, False if corrupted.
+        """
+        if not history:
+            return True
+
+        valid_types = {"user_input", "function_call", "function_result", "model_output", "thought"}
+        call_ids = set()
+        result_ids = set()
+
+        for item in history:
+            if not isinstance(item, dict):
+                logger.warning(f"Invalid history item type: {type(item)}, expected dict")
+                return False
+
+            item_type = item.get("type")
+            if item_type not in valid_types:
+                logger.warning(f"Unknown history item type: {item_type}")
+                return False
+
+            if item_type == "function_call":
+                call_id = item.get("id")
+                if not call_id:
+                    logger.warning("function_call missing 'id' field")
+                    return False
+                call_ids.add(call_id)
+
+            elif item_type == "function_result":
+                call_id = item.get("call_id")
+                if not call_id:
+                    logger.warning("function_result missing 'call_id' field")
+                    return False
+                result_ids.add(call_id)
+
+        # Check for orphaned pairs
+        orphaned_calls = call_ids - result_ids
+        orphaned_results = result_ids - call_ids
+
+        if orphaned_calls:
+            logger.warning(f"Orphaned function_call IDs: {orphaned_calls}")
+            return False
+        if orphaned_results:
+            logger.warning(f"Orphaned function_result IDs: {orphaned_results}")
+            return False
+
+        return True
 
     def _build_qualified_response(self, qualified_candidates: List[Dict[str, Any]]) -> str:
         """
