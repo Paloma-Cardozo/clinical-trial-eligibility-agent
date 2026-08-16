@@ -54,7 +54,8 @@ class EligibilityReasoner:
         return self.base_url_template.format(model=self.model)
 
     async def reason_soft_constraints(
-        self, patient_profile: Dict[str, Any], trial: Dict[str, Any]
+        self, patient_profile: Dict[str, Any], trial: Dict[str, Any],
+        api_key: str = None, model: str = None
     ) -> Dict[str, Any]:  # async to match orchestrator's await pattern
         """
         Reason whether patient matches trial's soft constraints.
@@ -62,6 +63,8 @@ class EligibilityReasoner:
         Args:
             patient_profile: Extracted patient info (age, condition, treatments, etc.)
             trial: Trial record with eligibility criteria
+            api_key: Current API key from orchestrator (overrides self.api_key)
+            model: Current model from orchestrator (overrides self.model)
 
         Returns:
             {
@@ -75,7 +78,10 @@ class EligibilityReasoner:
         3. Parse response to extract confidence and rationale
         4. Return structured result
         """
-        if not self.api_key:
+        current_api_key = api_key or self.api_key
+        current_model = model or self.model
+
+        if not current_api_key:
             return {
                 "confidence": "possibly_eligible",
                 "rationale": "API key not configured; unable to evaluate soft constraints.",
@@ -128,9 +134,10 @@ Be honest about uncertainty. If criteria are vague or patient info is incomplete
         # If this fails, orchestrator will decide whether to retry, rotate keys, or return graceful degradation.
         # This keeps reasoning logic simple and ensures consistent quota/retry strategy across all tools.
         try:
+            url = self.base_url_template.format(model=current_model)
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    self._get_base_url(),
+                    url,
                     json={
                         "contents": [
                             {
@@ -145,7 +152,7 @@ Be honest about uncertainty. If criteria are vague or patient info is incomplete
                             "topP": 0.9,
                         },
                     },
-                    params={"key": self.api_key},
+                    params={"key": current_api_key},
                     timeout=GEMINI_TIMEOUT,
                 )
                 response.raise_for_status()
