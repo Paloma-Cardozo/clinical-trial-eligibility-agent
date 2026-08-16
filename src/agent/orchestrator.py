@@ -207,6 +207,20 @@ For EACH trial you present, explicitly state its confidence level so the patient
 
 Always frame results in context: "These are candidates to discuss with your oncologist — not recommendations or guarantees. Your doctor can help determine which best fit your specific situation."
 
+## Presenting Ranked Final Results
+
+When the synthesis phase presents a final list, you will receive QUALIFIED CANDIDATES that have passed
+both hard constraints (age, sex) and soft constraints (disease stage, treatments, criteria match).
+These candidates are ranked by confidence level:
+- "likely_eligible" trials (highest match confidence)
+- "possibly_eligible" trials (some uncertainty in match)
+
+When presenting the final list:
+1. Present ONLY the qualified candidates provided (don't add trials that weren't evaluated)
+2. Present them in rank order (confidence-ranked, highest first)
+3. For each trial, state the confidence level and explain the soft constraint reasoning
+4. Stop after 8 candidates max, but mention if more are available
+
 If the patient describes symptoms of a medical emergency (severe pain, difficulty
 breathing, loss of consciousness, chest pain, or other acute distress), stop the trial
 conversation immediately and tell them to call emergency services or go to the nearest
@@ -475,36 +489,41 @@ class Agent:
 
         return False
 
-    async def _synthesize_partial_results(self, state: AgentState) -> str:
+    async def _synthesize_partial_results(self, state: AgentState, evaluated_candidates: Dict[str, str] = None) -> str:
         """
-        Synthesize a useful response from partial work when an error occurs mid-loop.
+        Synthesize a response from partial evaluation when an error occurs.
 
-        This is called when a terminal error (429 exhausted, 400 unrecoverable, etc.)
-        happens but we already have useful results: search_trials completed,
-        hard filters applied, maybe some trial details fetched.
+        If qualified candidates exist from soft constraint evaluation, rank and present them.
+        Otherwise, return summary of available search results.
 
-        Instead of returning "Error calling Gemini API: BadRequestError", we build
-        a response from what we DID complete, so patient gets partial results
-        rather than complete failure.
-
-        Returns a user-friendly response based on state's search_results and fetched details.
+        Args:
+            state: Current AgentState
+            evaluated_candidates: Dict {nct_id: confidence_level}
         """
+        if evaluated_candidates is None:
+            evaluated_candidates = {}
+
         patient_age = state.patient_profile.age or "unknown age"
         patient_sex = state.patient_profile.sex or "unknown sex"
         patient_condition = state.patient_profile.condition or "your condition"
-        patient_location = state.patient_profile.location_preference or "your area"
 
         response = []
-
-        # Acknowledge patient profile
         response.append(f"Patient profile: {patient_age}yo {patient_sex} with {patient_condition}")
 
-        # Report search results if available
+        if evaluated_candidates:
+            qualified = self._get_qualified_candidates(evaluated_candidates, state)
+            if qualified:
+                response.append(f"\nClinical trials matching your profile:")
+                for i, cand in enumerate(qualified, 1):
+                    conf = "likely eligible" if cand["confidence"] == "likely_eligible" else "possibly eligible"
+                    response.append(f"{i}. {cand['brief_title']} ({cand['nct_id']}) - {conf}")
+                response.append("\nDiscuss these options with your doctor to determine which best fit your situation.")
+                return "\n".join(response)
+
         if state.last_search_results:
             total_trials = len(state.last_search_results)
             response.append(f"\nFound {total_trials} clinical trials matching {patient_condition}.")
 
-            # Count how many passed hard filters
             if hasattr(self, 'eligibility_filter'):
                 passing_ids = self.eligibility_filter.filter_by_hard_constraints(
                     patient_age=state.patient_profile.age or 0,
@@ -513,17 +532,12 @@ class Agent:
                 )
                 response.append(f"{len(passing_ids)} trials meet your age and sex eligibility criteria.")
 
-                # If we have trial details fetched, list them
                 if state.fetched_trial_details:
-                    response.append(f"\nTrials we evaluated in detail:")
+                    response.append(f"\nTrials evaluated:")
                     for nct_id, trial in state.fetched_trial_details.items():
                         response.append(f"  - {trial.brief_title} ({nct_id})")
 
-        response.append(
-            "\nWe encountered a technical issue during evaluation. "
-            "Please ask your doctor about these candidates or try again in a moment."
-        )
-
+        response.append("\nPlease consult with your doctor about these clinical trial options.")
         return "\n".join(response)
 
     async def process_message(
@@ -625,7 +639,7 @@ class Agent:
 
                     # No more keys or non-quota error: synthesize partial results
                     logger.info(f"Terminal error (non-recoverable): {type(e).__name__}. Synthesizing partial results.")
-                    partial_response = await self._synthesize_partial_results(state)
+                    partial_response = await self._synthesize_partial_results(state, evaluated_candidates)
                     return (state, partial_response)
             # Process steps (with parallel function call execution)
             if interaction is None:
@@ -815,6 +829,14 @@ class Agent:
 
             logger.debug(f"V3 Iteration {iteration}: {', '.join(step_summary) if step_summary else 'no steps'}")
 
+            # Early trigger: if 3+ qualified candidates, present them now (matches system prompt minimum)
+            if len(evaluated_candidates) >= 3 and not final_response_text:
+                qualified_candidates = self._get_qualified_candidates(evaluated_candidates, state)
+                if qualified_candidates:
+                    final_response_text = self._build_qualified_response(qualified_candidates)
+                    logger.info(f"Early trigger: {len(qualified_candidates)} qualified candidates - presenting results")
+                    break
+
             if final_response_text:
                 logger.debug("V3 Got text response, stopping")
                 break
@@ -828,11 +850,26 @@ class Agent:
         if not final_response_text and iteration >= max_iterations:
             logger.info(f"Reached max_iterations ({max_iterations}) without final response. Making synthesis call...")
             try:
+                # Get qualified candidates (passed both hard + soft constraints, ranked by confidence)
+                qualified_candidates = self._get_qualified_candidates(evaluated_candidates, state)
+
+                # Build synthesis prompt with qualified candidates
+                qualified_text = ""
+                if qualified_candidates:
+                    qualified_text = "\n\nQUALIFIED CANDIDATES (filtered & ranked by confidence):\n"
+                    for i, cand in enumerate(qualified_candidates, 1):
+                        qualified_text += f"{i}. {cand['nct_id']} - {cand['brief_title']} [{cand['confidence']}]\n"
+                    qualified_text += "\nPresent ONLY these qualified candidates to the patient, in rank order. For each trial, explain:\n- Why it qualifies based on soft constraint match\n- Confidence level\n- Next steps (discussion with doctor)"
+
+                synthesis_text = "Based on the trials you've searched and evaluated so far, please provide a summary of the most promising candidates for this patient and your recommendations for next steps. If you haven't found suitable candidates, explain what barriers were encountered and what the patient should discuss with their doctor."
+                if qualified_text:
+                    synthesis_text += qualified_text
+
                 synthesis_prompt = {
                     "type": "user_input",
                     "content": [{
                         "type": "text",
-                        "text": "Based on the trials you've searched and evaluated so far, please provide a summary of the most promising candidates for this patient and your recommendations for next steps. If you haven't found suitable candidates, explain what barriers were encountered and what the patient should discuss with their doctor."
+                        "text": synthesis_text
                     }]
                 }
                 conversation_history.append(synthesis_prompt)
@@ -1274,4 +1311,81 @@ class Agent:
         logger.info(f"Patient profile updated: age={state.patient_profile.age}, sex={state.patient_profile.sex}, condition={state.patient_profile.condition}")
 
         return json.dumps({"status": "OK", "message": "Patient profile updated successfully"})
+
+    def _build_qualified_response(self, qualified_candidates: List[Dict[str, Any]]) -> str:
+        """
+        Build a user-facing response from ranked qualified candidates.
+
+        Args:
+            qualified_candidates: List from _get_qualified_candidates()
+
+        Returns:
+            Formatted response string with candidates ranked and explained.
+        """
+        if not qualified_candidates:
+            return ""
+
+        response = ["Clinical trials matching your profile:\n"]
+        for i, cand in enumerate(qualified_candidates, 1):
+            conf = "likely eligible" if cand["confidence"] == "likely_eligible" else "possibly eligible"
+            response.append(f"{i}. {cand['brief_title']} ({cand['nct_id']}) - {conf}")
+
+        response.append("\nDiscuss these options with your doctor to determine which best fit your situation.")
+        return "\n".join(response)
+
+    def _get_qualified_candidates(
+        self, evaluated_candidates: Dict[str, str], state: AgentState
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter and rank trials that passed BOTH hard + soft constraints.
+
+        Combines hard constraint evaluation (already applied during search_trials) with
+        soft constraint evaluation (confidence levels from reason_soft_constraints).
+
+        Args:
+            evaluated_candidates: Dict {nct_id: confidence_level} from soft constraint reasoning
+            state: Current AgentState with patient profile and fetched trial details
+
+        Returns:
+            List of qualified trials, ranked by confidence (likely_eligible first, then possibly_eligible):
+            [
+                {
+                    "nct_id": "NCT...",
+                    "confidence": "likely_eligible" | "possibly_eligible",
+                    "brief_title": "...",
+                    "trial": TrialDetail object
+                },
+                ...
+            ]
+        """
+        qualified = []
+
+        for nct_id, confidence in evaluated_candidates.items():
+            # Skip trials not in cache (shouldn't happen if orchestrator is correct)
+            if nct_id not in state.fetched_trial_details:
+                logger.debug(f"Skipping {nct_id}: not in trial cache")
+                continue
+
+            trial = state.fetched_trial_details[nct_id]
+
+            # Only include likely_eligible and possibly_eligible (exclude likely_not_eligible)
+            if confidence in ["likely_eligible", "possibly_eligible"]:
+                qualified.append({
+                    "nct_id": nct_id,
+                    "confidence": confidence,
+                    "brief_title": trial.brief_title,
+                    "trial": trial,
+                })
+                logger.debug(f"Qualified candidate: {nct_id} ({confidence})")
+
+        # Rank by confidence level: likely_eligible first, then possibly_eligible
+        # Within same confidence, maintain discovery order (dict preserves insertion order in Python 3.7+)
+        qualified.sort(key=lambda x: (
+            0 if x["confidence"] == "likely_eligible" else 1,
+            list(evaluated_candidates.keys()).index(x["nct_id"])
+        ))
+
+        logger.info(f"Qualified candidates ranked: {len(qualified)} trials ({len([c for c in qualified if c['confidence']=='likely_eligible'])} likely_eligible, {len([c for c in qualified if c['confidence']=='possibly_eligible'])} possibly_eligible)")
+
+        return qualified
 
