@@ -12,15 +12,6 @@ Responsibility:
 This is where the "agent" becomes intelligent: instead of a fixed pipeline,
 Gemini decides what to do next (ask clarifying questions, search, filter, reason, or stop).
 
-TEST CASE (reference scenario for validation):
-Patient: 60-year-old female, Copenhagen
-Condition: Breast cancer, stage 2
-History: Post-chemotherapy and tamoxifen
-Constraint: "I can only travel within Denmark"
-Expected behavior: search_trials called with location="Denmark" from the first search
-(not a global search filtered afterward) — only widen beyond Denmark if a
-Denmark-constrained search yields no viable candidates, and say so explicitly.
-
 ================================================================================
 API KEY MANAGEMENT STRATEGY
 ================================================================================
@@ -81,13 +72,18 @@ from src.clinicaltrials.client import TrialSearcher, TrialDetail
 from src.cleaning.eligibility import EligibilityFilter
 from src.cleaning.reasoning import EligibilityReasoner
 from src.cleaning import clean_trial
-from src.config import MODELS_FALLBACK, load_api_keys, GEMINI_TIMEOUT
+from src.config import MODELS_FALLBACK, load_api_keys, GEMINI_TIMEOUT, API_MODE, CURRENT_MODE_INFO
 
 # Load environment variables from .env
 load_dotenv()
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Log current API mode on startup (for visibility)
+logger.info(f"=== API MODE: {API_MODE} ===")
+logger.info(f"    Strategy: {CURRENT_MODE_INFO['quota_strategy']}")
+logger.info(f"    Cost: {CURRENT_MODE_INFO['cost']}")
 
 # ============================================================================
 # System Prompt (LITERAL — do not modify)
@@ -196,6 +192,16 @@ eligibility authority. Always:
 - Acknowledge when you're reasoning about unstructured eligibility text (soft constraints)
   versus structured fields — the former carries more inherent uncertainty.
 - Never discourage someone from seeking medical advice or care.
+
+## When presenting final results
+
+For EACH trial you present, explicitly state its confidence level so the patient understands the strength of the match:
+- Use "likely eligible" for trials matching most inclusion criteria with high confidence
+- Use "possibly eligible" for trials that might match but have some uncertainty
+- Use "likely not eligible" (don't include these in your final list)
+- Explain briefly WHY you assigned this level: e.g., "possibly eligible because [uncertainty about biomarker status / unclear disease stage]"
+
+Always frame results in context: "These are candidates to discuss with your oncologist — not recommendations or guarantees. Your doctor can help determine which best fit your specific situation."
 
 If the patient describes symptoms of a medical emergency (severe pain, difficulty
 breathing, loss of consciousness, chest pain, or other acute distress), stop the trial
@@ -774,11 +780,20 @@ class Agent:
 
                     evaluation_status = "\n[EVALUATION STATUS: " + "; ".join(status_parts) + "]"
 
+                # Build list of already-evaluated trials with confidence levels to prevent re-evaluation
+                already_evaluated_text = ""
+                if evaluated_candidates:
+                    evaluated_with_confidence = [f"{nct} ({conf})" for nct, conf in evaluated_candidates.items()]
+                    if len(evaluated_with_confidence) <= 20:
+                        already_evaluated_text = f"\n[ALREADY EVALUATED: {', '.join(evaluated_with_confidence)}]"
+                    else:
+                        already_evaluated_text = f"\n[ALREADY EVALUATED: {len(evaluated_with_confidence)} trials - {', '.join(evaluated_with_confidence[:20])}...]"
+
                 patient_summary = {
                     "type": "user_input",
                     "content": [{
                         "type": "text",
-                        "text": f"[PATIENT CONTEXT: Age {state.patient_profile.age}, Sex {state.patient_profile.sex}, Condition: {state.patient_profile.condition}, Disease Stage: {state.patient_profile.disease_stage}, Prior Treatments: {treatments_text}]{evaluation_status}"
+                        "text": f"[PATIENT CONTEXT: Age {state.patient_profile.age}, Sex {state.patient_profile.sex}, Condition: {state.patient_profile.condition}, Disease Stage: {state.patient_profile.disease_stage}, Prior Treatments: {treatments_text}]{evaluation_status}{already_evaluated_text}"
                     }]
                 }
 
