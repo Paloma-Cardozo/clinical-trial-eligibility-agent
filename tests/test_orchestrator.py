@@ -212,8 +212,8 @@ class TestAgentState:
         assert state.session_id == "test-123"
         assert isinstance(state.patient_profile, PatientProfile)
         assert state.patient_profile.age is None
-        assert state.previous_interaction_id is None
         assert state.fetched_trial_details == {}
+        assert state.last_search_results == []
 
     def test_patient_profile_all_optional(self):
         """All PatientProfile fields should be optional."""
@@ -246,21 +246,6 @@ class TestAgentState:
         assert profile.location_preference == "Denmark"
         assert profile.willing_to_travel is False
         assert profile.other_notes == "Allergic to paclitaxel"
-
-    def test_agent_state_previous_interaction_id(self):
-        """Should track previous_interaction_id for server-side state management."""
-        state = AgentState(session_id="test-123")
-
-        # Initially no interaction ID
-        assert state.previous_interaction_id is None
-
-        # After first turn, set interaction ID
-        state.previous_interaction_id = "interaction-abc123"
-        assert state.previous_interaction_id == "interaction-abc123"
-
-        # Can be updated for next turn
-        state.previous_interaction_id = "interaction-def456"
-        assert state.previous_interaction_id == "interaction-def456"
 
     def test_agent_state_fetched_trial_details_cache(self):
         """Should maintain cache of TrialDetail objects."""

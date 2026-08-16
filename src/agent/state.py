@@ -3,9 +3,9 @@ AgentState: Represents the state of a single patient conversation session.
 
 Holds:
 - patient_profile: Structured info extracted from patient's free-text input
-- previous_interaction_id: Server-side state reference (Interactions API)
 - fetched_trial_details: Cache of TrialDetail objects to avoid redundant API calls
 - session_id, created_at: Session metadata
+- last_search_results: Most recent trial search results for graceful degradation
 """
 
 from pydantic import BaseModel, Field, field_validator
@@ -66,19 +66,18 @@ class AgentState(BaseModel):
     """
     Encapsulates the state of a single patient's conversation with the agent.
 
-    Uses server-side state management via Interactions API previous_interaction_id.
-    Conversation history is maintained server-side; client only tracks the last interaction ID.
+    Conversation history is maintained locally within the agent loop; this object
+    persists patient profile and trial details across multiple turns.
 
     Fields:
     - session_id: Unique session identifier (server-authoritative)
     - created_at: When this session started
     - patient_profile: Extracted patient info (built up over turns)
-    - previous_interaction_id: Reference to last interaction for server-side state
     - fetched_trial_details: Cache of TrialDetail objects by NCT ID
+    - last_search_results: Most recent trial search results
     """
     session_id: str = Field(..., description="Unique session identifier")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     patient_profile: PatientProfile = Field(default_factory=PatientProfile)
-    previous_interaction_id: Optional[str] = Field(default=None, description="Server-side interaction ID for multi-turn state")
     fetched_trial_details: Dict[str, TrialDetail] = Field(default_factory=dict)
-    last_search_results: List[TrialSummary] = Field(default_factory=list, description="Most recent trial search results (for graceful degradation)")
+    last_search_results: List[TrialSummary] = Field(default_factory=list, description="Most recent trial search results for graceful degradation")

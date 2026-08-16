@@ -119,7 +119,7 @@ class ChatResponse(BaseModel):
 
     Fields:
     - session_id: Session identifier (new or existing)
-    - response: Text response from the agent (placeholder for now)
+    - response: Text response from the agent
     """
 
     session_id: str
@@ -202,7 +202,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 )
 
             # If we completed a search, mention results
-            if hasattr(state, 'last_search_results') and state.last_search_results:
+            if state.last_search_results:
                 partial_response.append(
                     f"\nFound {len(state.last_search_results)} clinical trials matching your condition. "
                     f"Trial evaluation is temporarily unavailable."
