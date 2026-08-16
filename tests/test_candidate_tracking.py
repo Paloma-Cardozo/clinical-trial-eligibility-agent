@@ -84,8 +84,6 @@ def test_candidate_extraction():
     assert evaluated_candidates["NCT07528638"] == "possibly_eligible"
     print("[PASS] TEST 1 PASSED\n")
 
-    return evaluated_candidates
-
 
 def test_patient_summary_enrichment():
     """Test that patient_summary is enriched with evaluation status."""
@@ -146,7 +144,6 @@ def test_patient_summary_enrichment():
     assert "Have 4 qualifying candidates" in patient_summary_text
 
     print("[PASS] TEST 2 PASSED\n")
-    return patient_summary_text
 
 
 def test_progress_tracking():
@@ -192,8 +189,8 @@ def test_progress_tracking():
 
 if __name__ == "__main__":
     try:
-        evaluated_candidates = test_candidate_extraction()
-        patient_summary = test_patient_summary_enrichment(evaluated_candidates)
+        test_candidate_extraction()
+        test_patient_summary_enrichment()
         test_progress_tracking()
 
         print("="*80)
