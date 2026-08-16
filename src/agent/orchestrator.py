@@ -542,6 +542,10 @@ class Agent:
         # Conversation history for stateless mode
         conversation_history = []
 
+        # Track evaluated candidates for dynamic patient summary
+        # Format: {nct_id: confidence_level} where confidence_level in ["likely_eligible", "possibly_eligible", "likely_not_eligible"]
+        evaluated_candidates = {}
+
         logger.info(f"=== STARTING AGENT LOOP: patient condition={state.patient_profile.condition} ===")
 
         while iteration < max_iterations:
@@ -701,12 +705,17 @@ class Agent:
                                 quota_error = result
                                 break
 
-                    if quota_error:
-                        logger.debug("Quota/unavailable error detected in parallel tasks, propagating to orchestrator loop")
-                        raise quota_error
-
+                    # Process all results (successful + errors)
+                    # Don't raise immediately on quota error - let tool_results processing handle it
                     for (name, args, tool_id, step), result in zip(other_steps, parallel_results):
                         tool_results.append((name, args, tool_id, step, result))
+
+                    # Only propagate quota error if ALL results are errors
+                    if quota_error and len(tool_results) == 0:
+                        logger.debug("All parallel tasks failed with quota/unavailable error, propagating to orchestrator loop")
+                        raise quota_error
+                    elif quota_error:
+                        logger.debug(f"Partial quota/unavailable error in parallel tasks: {len(parallel_results) - len([r for r in parallel_results if isinstance(r, Exception)])} succeeded, will retry failed ones next iteration")
 
             # Process results and add to history
             for tool_name, tool_args, tool_id, step, tool_result in tool_results:
@@ -715,6 +724,19 @@ class Agent:
                     tool_result_text = json.dumps({"error": f"Tool execution failed: {str(tool_result)}"})
                 else:
                     tool_result_text = tool_result
+
+                # Extract evaluated candidates from reason_soft_constraints results
+                if tool_name == "reason_soft_constraints" and not isinstance(tool_result, Exception):
+                    try:
+                        result_json = json.loads(tool_result_text)
+                        nct_id = tool_args.get("nct_id")
+                        confidence = result_json.get("confidence", "unknown")
+                        if nct_id:
+                            evaluated_candidates[nct_id] = confidence
+                            logger.debug(f"Tracked candidate: {nct_id} -> {confidence}")
+                    except (json.JSONDecodeError, KeyError):
+                        pass  # Ignore parsing errors
+
                 # Add function result to history for next iteration
                 conversation_history.append({
                     "type": "function_result",
@@ -729,11 +751,34 @@ class Agent:
             if len(conversation_history) > 20:
                 # Build patient summary (permanent context)
                 treatments_text = ", ".join(state.patient_profile.prior_treatments) if state.patient_profile.prior_treatments else "None"
+
+                # Build evaluation status if candidates have been evaluated
+                evaluation_status = ""
+                if evaluated_candidates:
+                    likely_eligible = [nct for nct, conf in evaluated_candidates.items() if conf == "likely_eligible"]
+                    possibly_eligible = [nct for nct, conf in evaluated_candidates.items() if conf == "possibly_eligible"]
+                    total_evaluated = len(evaluated_candidates)
+                    total_qualifying = len(likely_eligible) + len(possibly_eligible)
+
+                    status_parts = [f"Evaluated {total_evaluated} trials"]
+                    if likely_eligible:
+                        status_parts.append(f"{len(likely_eligible)} likely_eligible ({', '.join(likely_eligible[:2])}{'...' if len(likely_eligible) > 2 else ''})")
+                    if possibly_eligible:
+                        status_parts.append(f"{len(possibly_eligible)} possibly_eligible ({', '.join(possibly_eligible[:2])}{'...' if len(possibly_eligible) > 2 else ''})")
+
+                    remaining_needed = max(0, 3 - total_qualifying)
+                    if remaining_needed > 0:
+                        status_parts.append(f"Need {remaining_needed}+ more to reach target (3-8 candidates)")
+                    else:
+                        status_parts.append(f"Have {total_qualifying} qualifying candidates - approaching target (3-8)")
+
+                    evaluation_status = "\n[EVALUATION STATUS: " + "; ".join(status_parts) + "]"
+
                 patient_summary = {
                     "type": "user_input",
                     "content": [{
                         "type": "text",
-                        "text": f"[PATIENT CONTEXT: Age {state.patient_profile.age}, Sex {state.patient_profile.sex}, Condition: {state.patient_profile.condition}, Disease Stage: {state.patient_profile.disease_stage}, Prior Treatments: {treatments_text}]"
+                        "text": f"[PATIENT CONTEXT: Age {state.patient_profile.age}, Sex {state.patient_profile.sex}, Condition: {state.patient_profile.condition}, Disease Stage: {state.patient_profile.disease_stage}, Prior Treatments: {treatments_text}]{evaluation_status}"
                     }]
                 }
 
