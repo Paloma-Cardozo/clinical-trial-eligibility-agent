@@ -88,6 +88,10 @@ logger.info(f"    Cost: {CURRENT_MODE_INFO['cost']}")
 # ============================================================================
 # System Prompt (LITERAL — do not modify)
 # ============================================================================
+# DOCUMENTATION: This prompt is documented in detail in PROMPTS.md at the project root.
+# See PROMPTS.md for the complete reference, decision rationale, and version history.
+# Keep PROMPTS.md in sync with any changes made to this prompt.
+# ============================================================================
 
 SYSTEM_PROMPT = """You are a Clinical Trial Eligibility Agent. You help patients explore clinical trials on
 ClinicalTrials.gov that might be relevant to their situation, based on their condition, age,
