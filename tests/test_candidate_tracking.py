@@ -87,11 +87,19 @@ def test_candidate_extraction():
     return evaluated_candidates
 
 
-def test_patient_summary_enrichment(evaluated_candidates):
+def test_patient_summary_enrichment():
     """Test that patient_summary is enriched with evaluation status."""
     print("="*80)
     print("TEST 2: Patient Summary Enrichment with Evaluation Status")
     print("="*80)
+
+    # Set up candidate data (same as test 1)
+    evaluated_candidates = {
+        "NCT07007169": "likely_eligible",
+        "NCT07095023": "likely_eligible",
+        "NCT06111417": "possibly_eligible",
+        "NCT07528638": "possibly_eligible"
+    }
 
     # Simulate patient profile
     age = 45
