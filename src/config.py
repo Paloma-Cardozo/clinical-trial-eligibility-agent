@@ -56,3 +56,31 @@ def load_api_keys() -> List[str]:
             keys.append(key)
 
     return keys
+
+
+# ============================================================================
+# API MODE CONFIGURATION
+# ============================================================================
+
+API_MODE = os.environ.get("API_MODE", "DEVELOPMENT").upper()
+
+if API_MODE not in ["DEVELOPMENT", "PRODUCTION"]:
+    raise ValueError(f"Invalid API_MODE: {API_MODE}. Must be 'DEVELOPMENT' or 'PRODUCTION'")
+
+API_MODE_CONFIG = {
+    "DEVELOPMENT": {
+        "description": "Multiple free-tier API keys with automatic rotation",
+        "quota_strategy": "Rotate through 10 free-tier keys when quota exhausted",
+        "suitable_for": "Development, testing, rapid iteration",
+        "cost": "Free (limited to free-tier quotas)",
+    },
+    "PRODUCTION": {
+        "description": "Single paid API key with quota-aware backoff",
+        "quota_strategy": "Exponential backoff + circuit breaker pattern",
+        "suitable_for": "Production deployments with predictable costs",
+        "cost": "Paid (Cloud Billing enabled)",
+    },
+}
+
+# Current mode info (useful for logging and debugging)
+CURRENT_MODE_INFO = API_MODE_CONFIG[API_MODE]
