@@ -549,7 +549,7 @@ class Agent:
 
             interaction = None
             retry_count = 0
-            max_retries = len(self.api_keys) if self.api_keys else 1
+            max_retries = (len(self.api_keys) * len(MODELS_FALLBACK)) if self.api_keys else 1
 
             while retry_count < max_retries and interaction is None:
                 try:
@@ -597,21 +597,22 @@ class Agent:
                     logger.exception("Gemini API call failed")
 
                     is_quota_error = "429" in error_str or "too_many_requests" in error_str or "resource_exhausted" in error_str
+                    is_unavailable = "503" in error_str or "unavailable" in error_str or "high demand" in error_str
                     logger.debug(f"Error detection: quota={is_quota_error}, api_key_index={self.api_key_index}, num_keys={len(self.api_keys)}")
 
-                    if is_quota_error:
-                        rotated = await self._rotate_api_key()
-                        logger.info(f"Quota exceeded. Rotation attempt: {rotated}, now at key index {self.api_key_index}")
-                        if rotated:
+                    if is_quota_error or is_unavailable:
+                        # First, try next model in fallback chain
+                        if await self._handle_model_error(e):
                             retry_count += 1
-                            await asyncio.sleep(2 ** retry_count)
+                            await asyncio.sleep(min(2 ** retry_count, 30))
+                            logger.info(f"Model/Key rotation successful. Retrying with model_index={self.model_index}, key_index={self.api_key_index}")
+                            interaction = None  # Reset so inner while loop continues
                             continue
 
                     # No more keys or non-quota error: synthesize partial results
                     logger.info(f"Terminal error (non-recoverable): {type(e).__name__}. Synthesizing partial results.")
                     partial_response = await self._synthesize_partial_results(state)
                     return (state, partial_response)
-
             # Process steps (with parallel function call execution)
             if interaction is None:
                 return (state, "Failed to get response from API")
@@ -707,20 +708,20 @@ class Agent:
                     for (name, args, tool_id, step), result in zip(other_steps, parallel_results):
                         tool_results.append((name, args, tool_id, step, result))
 
-                # Process results and add to history
-                for tool_name, tool_args, tool_id, step, tool_result in tool_results:
-                    # Handle both successful results (strings) and exceptions
-                    if isinstance(tool_result, Exception):
-                        tool_result_text = json.dumps({"error": f"Tool execution failed: {str(tool_result)}"})
-                    else:
-                        tool_result_text = tool_result
-                    # Add function result to history for next iteration
-                    conversation_history.append({
-                        "type": "function_result",
-                        "name": tool_name,
-                        "call_id": tool_id,
-                        "result": [{"type": "text", "text": tool_result_text}]
-                    })
+            # Process results and add to history
+            for tool_name, tool_args, tool_id, step, tool_result in tool_results:
+                # Handle both successful results (strings) and exceptions
+                if isinstance(tool_result, Exception):
+                    tool_result_text = json.dumps({"error": f"Tool execution failed: {str(tool_result)}"})
+                else:
+                    tool_result_text = tool_result
+                # Add function result to history for next iteration
+                conversation_history.append({
+                    "type": "function_result",
+                    "name": tool_name,
+                    "call_id": tool_id,
+                    "result": [{"type": "text", "text": tool_result_text}]
+                })
 
             # Manage conversation_history to prevent error 400 in iteration 2+
             # Strategy: Keep patient context permanent, trim history while preserving semantic blocks
@@ -1006,58 +1007,55 @@ class Agent:
 
         This breaks Gemini API's strict requirements for tool use sequences.
 
-        Strategy:
-        1. Scan from start: track which function_call IDs have results
-        2. Remove any function_result without matching function_call
-        3. Remove any function_call without a following function_result
+        CRITICAL FIX: Build sets of call IDs and result IDs in this tail, then only keep
+        items that form complete pairs. This prevents breaking pairs when truncating.
         """
         if not history_tail:
             return history_tail
 
-        # Build set of call_ids that have results in this tail
-        result_call_ids = set()
-        for item in history_tail:
-            if isinstance(item, dict) and item.get("type") == "function_result":
-                call_id = item.get("call_id")
-                if call_id:
-                    result_call_ids.add(call_id)
+        # Scan tail to find what call IDs and result IDs exist
+        call_ids_in_tail = set()
+        result_call_ids_in_tail = set()
 
-        # Build set of call_ids from function_call steps
-        function_call_ids = set()
         for item in history_tail:
-            if isinstance(item, dict) and item.get("type") == "function_call":
-                call_id = item.get("id")
-                if call_id:
-                    function_call_ids.add(call_id)
+            if isinstance(item, dict):
+                if item.get("type") == "function_call" and item.get("id"):
+                    call_ids_in_tail.add(item.get("id"))
+                elif item.get("type") == "function_result" and item.get("call_id"):
+                    result_call_ids_in_tail.add(item.get("call_id"))
 
-        # Remove orphaned items
+        # Build cleaned list: keep items only if they form complete pairs
         cleaned = []
+        removed_count = 0
+
         for item in history_tail:
             if isinstance(item, dict):
                 item_type = item.get("type")
 
-                # Keep function_result only if its function_call is in this tail
-                if item_type == "function_result":
-                    call_id = item.get("call_id")
-                    if call_id and call_id in function_call_ids:
-                        cleaned.append(item)
-                    # Skip: function_result without matching function_call in tail
-
-                # Keep function_call only if followed by function_result
-                elif item_type == "function_call":
+                if item_type == "function_call":
                     call_id = item.get("id")
-                    if call_id and call_id in result_call_ids:
+                    # Keep function_call only if its result exists in this tail
+                    if call_id and call_id in result_call_ids_in_tail:
                         cleaned.append(item)
-                    # Skip: function_call without matching function_result in tail
+                    else:
+                        removed_count += 1
 
-                # Keep all other types (model_output, user_input, etc.)
+                elif item_type == "function_result":
+                    call_id = item.get("call_id")
+                    # Keep function_result only if its call exists in this tail
+                    if call_id and call_id in call_ids_in_tail:
+                        cleaned.append(item)
+                    else:
+                        removed_count += 1
+
                 else:
+                    # Keep all non-tool items (thoughts, model_output, user_input, etc.)
                     cleaned.append(item)
             else:
                 cleaned.append(item)
 
-        if len(cleaned) < len(history_tail):
-            logger.debug(f"Removed {len(history_tail) - len(cleaned)} orphaned tool call pairs from history tail")
+        if removed_count > 0:
+            logger.debug(f"Removed {removed_count} orphaned tool call items from history tail (kept {len(cleaned)} items)")
 
         return cleaned
 
@@ -1136,6 +1134,8 @@ class Agent:
             result = await self.eligibility_reasoner.reason_soft_constraints(
                 patient_profile=state.patient_profile.model_dump(),
                 trial=trial.model_dump(),
+                api_key=self.api_keys[self.api_key_index] if self.api_keys else None,
+                model=self.model,
             )
             return json.dumps(result)
         except Exception as e:
