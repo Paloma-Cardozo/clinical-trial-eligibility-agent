@@ -67,6 +67,18 @@ Run the smoke tests to verify the server is working:
 pytest tests/test_smoke.py -v
 ```
 
+### System Prompts and Instructions
+
+The agent's behavior is governed by a **system prompt** that defines how it should interact with patients, when to search for trials, and how to present results.
+
+**See [PROMPTS.md](PROMPTS.md)** for the complete, authoritative system prompt. This file includes:
+- How the agent collects patient information
+- When the agent stops and presents findings
+- How confidence levels are assigned to trial matches
+- How results should be framed for patient discussion with doctors
+
+The system prompt is the source of truth for the agent's decision-making logic. It's maintained in `src/agent/orchestrator.py` and documented here for transparency.
+
 ---
 
 ## Architecture
