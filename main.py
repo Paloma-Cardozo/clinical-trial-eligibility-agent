@@ -17,6 +17,7 @@ from typing import Optional
 import uuid
 import asyncio
 import logging
+import os
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
 
@@ -197,7 +198,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 partial_response.append(
                     f"Patient profile recorded: {state.patient_profile.age}yo "
                     f"{state.patient_profile.sex or '?'} from "
-                    f"{state.patient_profile.location or 'unknown location'}"
+                    f"{state.patient_profile.location_preference or 'unknown location'}"
                 )
 
             # If we completed a search, mention results
@@ -224,4 +225,5 @@ async def chat(request: ChatRequest) -> ChatResponse:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="127.0.0.1", port=port)
