@@ -22,16 +22,30 @@
    pip install -r requirements.txt
    ```
 
-3. **Set up your Google Gemini API key:**
-   - **Get your free API key:** Go to https://ai.google.dev/, sign in with Google, and create a new API key (free tier available)
+3. **Configure Google Gemini API:**
    - **Create `.env` file from template:**
      ```bash
      cp .env.example .env
      ```
-   - **Add your key to `.env`:**
-     Open `.env` and replace `your_google_gemini_api_key_here` with your actual key
+   
+   - **Choose your API mode:**
+     
+     **DEVELOPMENT MODE** (default - recommended for testing):
+     - Get free API keys from https://ai.google.dev/ (no billing required)
+     - Add multiple keys to `.env`: `GOOGLE_API_KEY_1`, `GOOGLE_API_KEY_2`, etc.
+     - Agent automatically rotates through keys when quota exhausted
+     - Free tier available (~60 requests/minute per key)
+     
+     **PRODUCTION MODE** (for deployment with paid quota):
+     - Set up Cloud Billing in Google Cloud Console
+     - Get a single API key with paid quota
+     - Add to `.env`: `GOOGLE_API_KEY` or `GOOGLE_API_KEY_1`
+     - Add to `.env`: `API_MODE=PRODUCTION`
+     - Agent uses exponential backoff + circuit breaker pattern
+   
+   - **See `.env.example` for detailed configuration options**
 
-   ⚠️ **Security note:** `.env` is in `.gitignore` — your API key will never be committed to git. Each developer must create their own `.env` locally.
+   ⚠️ **Security note:** `.env` is in `.gitignore` — your API keys will never be committed to git. Each developer must create their own `.env` locally.
 
 4. **Run the server:**
 
