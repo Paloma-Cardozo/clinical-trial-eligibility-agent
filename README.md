@@ -65,7 +65,7 @@ GOOGLE_API_KEY=your-paid-key
 API_MODE=PRODUCTION
 ```
 
-⚠️ **Security:** `.env` is in `.gitignore` — API keys are never committed. Each developer creates their own `.env` locally.
+**Security:** `.env` is in `.gitignore` — API keys are never committed. Each developer creates their own `.env` locally.
 
 ### Complete Configuration Options
 
@@ -184,10 +184,10 @@ clinical-trial-eligibility-agent/
 
 This solution implements the full assignment scope:
 
-### ✅ 1. Patient-Facing Interface  
+### 1. Patient-Facing Interface  
 Vanilla HTML/JS chat frontend — no build process. Patients describe their situation in free text, see ranked trial recommendations.
 
-### ✅ 2. Intelligent Agent Loop
+### 2. Intelligent Agent Loop
 - Asks clarifying questions when eligibility info is missing (condition, age, sex)
 - Decides its own API queries based on patient input
 - Fetches full trial details selectively, not exhaustively
@@ -197,28 +197,28 @@ Vanilla HTML/JS chat frontend — no build process. Patients describe their situ
   - Validates conversation state before API calls; graceful fallback if corruption detected
   - Graceful degradation: if error occurs mid-evaluation, presents best results from evaluated candidates
 
-### ✅ 3. ClinicalTrials.gov Integration  
+### 3. ClinicalTrials.gov Integration  
 Queries public API, extracts recruiting trials matching patient condition/location/eligibility.
 
-### ✅ 4. Data Cleaning  
+### 4. Data Cleaning  
 - Eligibility criteria: parsed into structured inclusion/exclusion via regex + LLM
 - Dates: normalized to Python `date` objects
 - Selective fields: only fetches what's needed via API `fields=` parameter
 
-### ✅ 5. Eligibility Reasoning & Output
+### 5. Eligibility Reasoning & Output
 - **Hard constraint filtering** ([EligibilityFilter](src/cleaning/eligibility.py)): age, sex, healthy-volunteer checks
 - **Soft constraint reasoning** ([EligibilityReasoner](src/cleaning/reasoning.py)): disease stage, treatments, biomarkers via LLM
 - **Ranked output**: candidates labeled as `likely_eligible`, `possibly_eligible`, ranked by confidence
 - **Plain-language rationale**: explains why each trial was included
 - **Links to ClinicalTrials.gov**: patients can verify details
 
-### ✅ 6. Safety & Framing  
+### 6. Safety & Framing  
 - Frames results as candidates for doctor discussion, never as medical advice
 - Transparent about uncertainty in soft constraint reasoning
 - Does not discourage care-seeking
 - Handles medical emergencies (stops agent, redirects to 911)
 
-### ✅ Testing  
+### Testing  
 - 54 unit tests passing (excludes integration tests by default)
 - Smoke tests for server and session persistence
 - Unit tests for orchestrator, data cleaning, API integration

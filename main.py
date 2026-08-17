@@ -210,7 +210,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
             # Add error note
             partial_response.append(
-                f"\n⚠️ Service temporarily unavailable. Please try again in a moment."
+                f"\nService temporarily unavailable. Please try again in a moment."
             )
 
             response_text = "".join(partial_response) if partial_response else (

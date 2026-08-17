@@ -286,11 +286,11 @@ For each candidate trial: determine fit, return label (likely/possibly/likely no
 ```
 
 Each trial includes:
-- ✅ **NCT ID + Title** (from trial details)
-- ✅ **Status** (RECRUITING, ACTIVE_NOT_RECRUITING, etc.)
-- ✅ **Confidence level** (likely_eligible, possibly_eligible)
-- ✅ **Plain-language rationale** (from soft constraint reasoning)
-- ✅ **Link to trial** (implicit in NCT ID: `https://clinicaltrials.gov/study/NCT...`)
+- **NCT ID + Title** (from trial details)
+- **Status** (RECRUITING, ACTIVE_NOT_RECRUITING, etc.)
+- **Confidence level** (likely_eligible, possibly_eligible)
+- **Plain-language rationale** (from soft constraint reasoning)
+- **Link to trial** (implicit in NCT ID: `https://clinicaltrials.gov/study/NCT...`)
 
 **Design Decision:** Confidence levels assigned by LLM during soft constraint reasoning, not post-hoc. Each trial has explicit reasoning attached (from `reason_soft_constraints` rationale field).
 
@@ -413,8 +413,8 @@ All 6 assignment requirements fully implemented:
 
 This solution delivers a **complete, production-adjacent clinical trial discovery tool** that genuinely demonstrates LLM agent design, data cleaning, and full-stack engineering:
 
-1. ✅ **Agent design:** LLM drives control flow; visible, testable decision points
-2. ✅ **Data cleaning:** hard/soft constraint separation; structured + unstructured handling
-3. ✅ **Engineering quality:** clean code, comprehensive tests, clear docs, architectural coherence
-4. ✅ **Safety & UX:** frames results appropriately, handles edge cases, graceful degradation
+1. **Agent design:** LLM drives control flow; visible, testable decision points
+2. **Data cleaning:** hard/soft constraint separation; structured + unstructured handling
+3. **Engineering quality:** clean code, comprehensive tests, clear docs, architectural coherence
+4. **Safety & UX:** frames results appropriately, handles edge cases, graceful degradation
 

@@ -19,21 +19,21 @@ API KEY MANAGEMENT STRATEGY
 TWO APPROACHES SHOWN BELOW:
 
 1. DEVELOPMENT MODE (Current implementation with key rotation):
-   ✅ Multiple API keys (currently 10 from free-tier Google AI Studio projects)
-   ✅ Automatic rotation when quota exhausted (429 errors)
-   ✅ Enables rapid iteration and testing with multiple agent loops
-   ⚠️ Trade-off: Requires management of multiple keys
-   ⚠️ Note: Uses free-tier quota; in production would use paid quota or optimization
+   - Multiple API keys (currently 10 from free-tier Google AI Studio projects)
+   - Automatic rotation when quota exhausted (429 errors)
+   - Enables rapid iteration and testing with multiple agent loops
+   - Trade-off: Requires management of multiple keys
+   - Note: Uses free-tier quota; in production would use paid quota or optimization
 
    Context: This is suitable for a development/testing environment where you need
    rapid iteration and can manage multiple free-tier accounts. It demonstrates
    understanding of quota constraints and API rate limiting.
 
 2. PRODUCTION MODE (Recommended alternative - NOT currently implemented):
-   ✅ Single API key (paid quota via Cloud Billing)
-   ✅ Quota-aware backoff and circuit breaker patterns
-   ✅ Optimized token consumption (see optimizations below)
-   ✅ Simpler deployment and maintenance
+   - Single API key (paid quota via Cloud Billing)
+   - Quota-aware backoff and circuit breaker patterns
+   - Optimized token consumption (see optimizations below)
+   - Simpler deployment and maintenance
 
    Optimizations for production:
    - Aggressive caching (2-level: agent + session)
